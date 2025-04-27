@@ -1,50 +1,66 @@
+
+import warnings
+import logging
+
+warnings.filterwarnings("ignore")
+
+# Libraries to help with reading and manipulating data
 import pandas as pd
-from Pathlib import Path
+import numpy as np
+from sklearn.preprocessing import OneHotEncoder
 
-#Import csv
-csv_path = Path('../data/raw/StarHotelsGroup.csv')
-raw_data = pd.read_csv(csv_path)
+#For date manipulation
+from datetime import datetime
 
-#preprocessing steps
 
-def preprocessing(data):
+# Library to split data
+from sklearn.model_selection import train_test_split
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def load_data(filepath: str) -> pd.DataFrame:
+    """Load raw data with validation checks."""
+    try:
+        df = pd.read_csv(filepath)
+        logger.info(f"Data loaded. Shape: {df.shape}")
+        return df
+    except FileNotFoundError:
+        logger.error(f"File not found at {filepath}")
+        raise
+
+def data_cleaning(df):
     """
-    Function to preprocess the data as identified during EDA
-    1.General removal of duplicate 
+    Data cleanning as idenfied in EDA
     """
-    # We will combine summer months (March-August) & winter months (September-February)
-    
-def feature_eng(data):
-    data["arrival_month"] = data["arrival_month"].astype("object")
-
-    data.loc[data.arrival_month==1, "arrival_month"] = "Winter"
-    data.loc[data.arrival_month==2, "arrival_month"] = "Winter"
-    data.loc[data.arrival_month==3, "arrival_month"] = "Summer"
-    data.loc[data.arrival_month==4, "arrival_month"] = "Summer"
-    data.loc[data.arrival_month==5, "arrival_month"] = "Summer"
-    data.loc[data.arrival_month==6, "arrival_month"] = "Summer"
-    data.loc[data.arrival_month==7, "arrival_month"] = "Summer"
-    data.loc[data.arrival_month==8, "arrival_month"] = "Summer"
-    data.loc[data.arrival_month==9, "arrival_month"] = "Winter"
-    data.loc[data.arrival_month==10, "arrival_month"] = "Winter"
-    data.loc[data.arrival_month==11, "arrival_month"] = "Winter"
-    data.loc[data.arrival_month==12, "arrival_month"] = "Winter"
-
-    data["arrival_month"] = data["arrival_month"].astype("category")
-
-
-    # We will combine Meal Plan 3 with Meal Plan 2
-    data["type_of_meal_plan"] = data["type_of_meal_plan"].astype("object")
-    data["room_type_reserved"] = data["room_type_reserved"].astype("object")
-
-    data.loc[data.type_of_meal_plan=="Meal Plan 2", "type_of_meal_plan"] = "Not_Meal_Plan 1"
-    data.loc[data.type_of_meal_plan=="Meal Plan 3", "type_of_meal_plan"] = "Not_Meal_Plan 1"
-
+    #1.Duplication
+    df = df.drop_duplicate()
+    #2.Remove 2018-02-29
+    df.drop(df[(df['arrival_year']==2018)&(df['arrival_month']==2)&(df['arrival_date']==29)].index,axis = 0,inplace = True)
+    #3. Because Room Type 2,3,5,7 contains very less information, we can combine them as 1 category 'other'
     # We will combine Room_Type 2,3,5 and 7
-    data.loc[data.room_type_reserved =="Room_Type 2", "room_type_reserved"] = "Others"
-    data.loc[data.room_type_reserved =="Room_Type 3", "room_type_reserved"] = "Others"
-    data.loc[data.room_type_reserved =="Room_Type 5", "room_type_reserved"] = "Others"
-    data.loc[data.room_type_reserved =="Room_Type 7", "room_type_reserved"] = "Others"
+    # Replace multiple room types with "Others" in one operation
+    df.loc[df['room_type_reserved'].isin(["Room_Type 2", "Room_Type 3", "Room_Type 5", "Room_Type 7"]), 
+        'room_type_reserved'] = "Others"
+    logger.info(f"Data cleaned. New shape: {df.shape}")
+    return df
 
-    data["type_of_meal_plan"] = data["type_of_meal_plan"].astype("category")
-    data["room_type_reserved"] = data["room_type_reserved"].astype("category")
+
+def feature_engineering(df):
+    # 1. Convert months to 4 seasons
+    seasons_map = {
+        1: "Winter", 2: "Winter", 3: "Spring", 
+        4: "Spring", 5: "Spring", 6: "Summer",
+        7: "Summer", 8: "Summer", 9: "Fall",
+        10: "Fall", 11: "Fall", 12: "Winter"
+    }
+    df["arrival_season"] = df["arrival_date_month"].map(seasons_map)
+    #1 Encode all attributes
+    cat_col = df.select_dtypes(['category','object']).columns
+    for col in cat_col:
+        df[col] = df[col].astype(str).str.strip()  # remove leading/trailing spaces
+
+    # Then do one-hot encoding and force dtype=int
+    df = pd.get_dummies(df, columns=cat_col, dtype=int)
+    logger.info("Feature engineering completed")
+    return df
